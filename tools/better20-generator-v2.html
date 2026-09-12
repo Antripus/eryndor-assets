@@ -1,0 +1,334 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Eryndor - Better20 URL Generator</title>
+<style>
+:root { color-scheme: dark; font-family: Arial, Helvetica, sans-serif; }
+body { margin: 0; padding: 24px; background: #111827; color: #f3f4f6; }
+.container { max-width: 1200px; margin: 0 auto; }
+h1 { margin: 0 0 6px; }
+h2 { margin-top: 0; }
+.subtitle { color: #9ca3af; margin: 0 0 24px; }
+.card { background: #1f2937; border: 1px solid #374151; border-radius: 12px; padding: 20px; margin-bottom: 20px; }
+.row { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
+.field { display: flex; flex-direction: column; gap: 6px; }
+label { font-size: 14px; color: #d1d5db; }
+input[type=text] { background: #111827; color: #f3f4f6; border: 1px solid #4b5563; border-radius: 8px; padding: 10px; }
+input[type=file] { display: none; }
+button, .folder-button { background: #7c3aed; color: white; border: none; border-radius: 8px; padding: 10px 16px; cursor: pointer; font-weight: bold; display: inline-block; }
+button:hover, .folder-button:hover { background: #6d28d9; }
+.secondary { background: #374151; }
+.secondary:hover { background: #4b5563; }
+.danger { background: #991b1b; }
+.danger:hover { background: #7f1d1d; }
+.options { display: flex; flex-wrap: wrap; gap: 18px; margin-top: 16px; }
+.options label { display: flex; align-items: center; gap: 8px; cursor: pointer; }
+.status { margin-top: 14px; color: #9ca3af; }
+.count { font-size: 18px; font-weight: bold; color: #f3f4f6; }
+.actions { display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 12px; }
+textarea { width: 100%; min-height: 300px; box-sizing: border-box; background: #0b1220; color: #e5e7eb; border: 1px solid #4b5563; border-radius: 8px; padding: 12px; resize: vertical; }
+.folder-list { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 8px; margin-top: 12px; }
+.folder-item { background: #111827; border: 1px solid #374151; border-radius: 8px; padding: 10px; }
+.folder-item label { display: flex; align-items: center; justify-content: space-between; gap: 10px; cursor: pointer; }
+.badge { background: #374151; border-radius: 999px; padding: 2px 8px; font-size: 12px; color: #d1d5db; }
+.quick-actions { display: flex; gap: 8px; margin-top: 12px; flex-wrap: wrap; }
+.small { font-size: 13px; color: #9ca3af; }
+.preview { width: 100%; border-collapse: collapse; margin-top: 10px; }
+.preview th, .preview td { border-bottom: 1px solid #374151; padding: 8px; text-align: left; vertical-align: top; }
+.preview th { color: #d1d5db; }
+.preview td { color: #9ca3af; }
+.hidden { display: none; }
+@media (max-width: 800px) { .row { grid-template-columns: 1fr; } body { padding: 12px; } }
+</style>
+</head>
+<body>
+<div class="container">
+<h1>Eryndor - Better20 URL Generator</h1>
+<p class="subtitle">Select your eryndor-assets folder, filter the folders you want, and copy the Better20 format.</p>
+
+<div class="card">
+<h2>GitHub configuration</h2>
+<div class="row">
+<div class="field"><label for="githubUser">GitHub user</label><input id="githubUser" type="text" value="Antripus"></div>
+<div class="field"><label for="repo">Repository</label><input id="repo" type="text" value="eryndor-assets"></div>
+<div class="field"><label for="branch">Branch</label><input id="branch" type="text" value="main"></div>
+</div>
+<div class="options">
+<label><input type="checkbox" id="includeFolder"> Include folder in display name</label>
+<label><input type="checkbox" id="caseInsensitive"> Treat extensions case-insensitively (recommended)</label>
+</div>
+</div>
+
+<div class="card">
+<h2>Select asset folder</h2>
+<input id="folderPicker" type="file" webkitdirectory directory multiple>
+<label for="folderPicker" class="folder-button">Select eryndor-assets</label>
+<div class="status"><span class="count" id="fileCount">0</span> images selected</div>
+<div id="folderControls" class="hidden">
+<h3>Folders</h3>
+<div class="quick-actions">
+<button type="button" id="selectAllFolders">Select all</button>
+<button type="button" id="clearFolders" class="secondary">Clear all</button>
+</div>
+<div id="folderList" class="folder-list"></div>
+</div>
+</div>
+
+<div class="card">
+<h2>Better20 output</h2>
+<div class="actions">
+<button type="button" id="copyButton">Copy all</button>
+<button type="button" id="copyFilteredButton" class="secondary">Copy filtered</button>
+<button type="button" id="downloadButton" class="secondary">Download TXT</button>
+<button type="button" id="clearButton" class="danger">Clear</button>
+</div>
+<textarea id="output" placeholder="Better20 entries will appear here..."></textarea>
+<p class="small">Format: Name---DirectImageURL</p>
+</div>
+
+<div class="card">
+<h2>Preview</h2>
+<div id="previewContainer" class="small">No folder selected.</div>
+</div>
+</div>
+
+<script>
+'use strict';
+
+const IMAGE_EXTENSIONS = new Set(['.png','.jpg','.jpeg','.webp','.gif']);
+let allFiles = [];
+let selectedFolders = new Set();
+
+const folderPicker = document.getElementById('folderPicker');
+const githubUser = document.getElementById('githubUser');
+const repo = document.getElementById('repo');
+const branch = document.getElementById('branch');
+const includeFolder = document.getElementById('includeFolder');
+const caseInsensitive = document.getElementById('caseInsensitive');
+const fileCount = document.getElementById('fileCount');
+const output = document.getElementById('output');
+const previewContainer = document.getElementById('previewContainer');
+const folderControls = document.getElementById('folderControls');
+const folderList = document.getElementById('folderList');
+
+function getExtension(filename) {
+    const dot = filename.lastIndexOf('.');
+    if (dot === -1) return '';
+    const ext = filename.slice(dot);
+    return caseInsensitive.checked ? ext.toLowerCase() : ext;
+}
+
+function getBaseName(filename) {
+    const dot = filename.lastIndexOf('.');
+    return dot === -1 ? filename : filename.slice(0, dot);
+}
+
+function cleanName(name) {
+    return getBaseName(name)
+        .replace(/[_-]+/g, ' ')
+        .replace(/\s+/g, ' ')
+        .trim();
+}
+
+function encodeGitHubPath(path) {
+    return path.split('/').map(part => encodeURIComponent(part)).join('/');
+}
+
+function buildRawUrl(relativePath) {
+    const user = githubUser.value.trim();
+    const repository = repo.value.trim();
+    const currentBranch = branch.value.trim() || 'main';
+    return `https://raw.githubusercontent.com/${encodeURIComponent(user)}/${encodeURIComponent(repository)}/${encodeURIComponent(currentBranch)}/${encodeGitHubPath(relativePath)}`;
+}
+
+function getRelativePath(file) {
+    const raw = file.webkitRelativePath || file.name;
+    const parts = raw.split('/');
+    if (parts.length > 1) parts.shift();
+    return parts.join('/');
+}
+
+function getFolder(relativePath) {
+    const parts = relativePath.split('/');
+    parts.pop();
+    return parts.length ? parts.join('/') : '(root)';
+}
+
+function folderHasFile(relativePath, folder) {
+    return getFolder(relativePath) === folder;
+}
+
+function renderFolders() {
+    const folders = [...new Set(allFiles.map(file => getFolder(getRelativePath(file))))].sort((a,b) => a.localeCompare(b));
+    if (!folders.length) {
+        folderControls.classList.add('hidden');
+        return;
+    }
+
+    folderControls.classList.remove('hidden');
+    folderList.innerHTML = '';
+
+    const counts = new Map();
+    for (const file of allFiles) {
+        const folder = getFolder(getRelativePath(file));
+        counts.set(folder, (counts.get(folder) || 0) + 1);
+    }
+
+    for (const folder of folders) {
+        const wrapper = document.createElement('div');
+        wrapper.className = 'folder-item';
+        const label = document.createElement('label');
+        const checkbox = document.createElement('input');
+        checkbox.type = 'checkbox';
+        checkbox.checked = selectedFolders.has(folder);
+        checkbox.addEventListener('change', () => {
+            if (checkbox.checked) selectedFolders.add(folder);
+            else selectedFolders.delete(folder);
+            generateEntries();
+        });
+        const left = document.createElement('span');
+        left.textContent = folder;
+        const badge = document.createElement('span');
+        badge.className = 'badge';
+        badge.textContent = counts.get(folder);
+        label.appendChild(checkbox);
+        label.appendChild(left);
+        label.appendChild(badge);
+        wrapper.appendChild(label);
+        folderList.appendChild(wrapper);
+    }
+}
+
+function getActiveFiles() {
+    if (!selectedFolders.size) return [];
+    return allFiles.filter(file => selectedFolders.has(getFolder(getRelativePath(file))));
+}
+
+function generateEntries() {
+    const files = getActiveFiles();
+    const entries = files.map(file => {
+        const path = getRelativePath(file);
+        const filename = path.split('/').pop();
+        let name = cleanName(filename);
+        if (includeFolder.checked) {
+            const folder = getFolder(path);
+            if (folder !== '(root)') name = `${folder} / ${name}`;
+        }
+        const url = buildRawUrl(path);
+        return { name, path, url, line: `${name}---${url}` };
+    }).sort((a,b) => a.path.localeCompare(b.path));
+
+    output.value = entries.map(e => e.line).join('\n');
+    fileCount.textContent = entries.length;
+    renderPreview(entries);
+}
+
+function renderPreview(entries) {
+    if (!entries.length) {
+        previewContainer.innerHTML = allFiles.length ? 'No selected folders.' : 'No folder selected.';
+        return;
+    }
+    const maxPreview = 200;
+    const visible = entries.slice(0, maxPreview);
+    let html = '<table class="preview"><thead><tr><th>Name</th><th>Path</th><th>URL</th></tr></thead><tbody>';
+    for (const entry of visible) {
+        html += `<tr><td>${escapeHtml(entry.name)}</td><td>${escapeHtml(entry.path)}</td><td>${escapeHtml(entry.url)}</td></tr>`;
+    }
+    html += '</tbody></table>';
+    if (entries.length > maxPreview) html += `<p class="small">Showing ${maxPreview} of ${entries.length} images.</p>`;
+    previewContainer.innerHTML = html;
+}
+
+function escapeHtml(value) {
+    return value.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#039;');
+}
+
+function saveSettings() {
+    localStorage.setItem('eryndorBetter20Settings', JSON.stringify({
+        user: githubUser.value.trim(), repo: repo.value.trim(), branch: branch.value.trim(), includeFolder: includeFolder.checked, caseInsensitive: caseInsensitive.checked
+    }));
+}
+
+function loadSettings() {
+    try {
+        const raw = localStorage.getItem('eryndorBetter20Settings');
+        if (!raw) return;
+        const data = JSON.parse(raw);
+        if (typeof data.user === 'string') githubUser.value = data.user;
+        if (typeof data.repo === 'string') repo.value = data.repo;
+        if (typeof data.branch === 'string') branch.value = data.branch;
+        if (typeof data.includeFolder === 'boolean') includeFolder.checked = data.includeFolder;
+        if (typeof data.caseInsensitive === 'boolean') caseInsensitive.checked = data.caseInsensitive;
+    } catch (error) {}
+}
+
+async function copyText(text) {
+    if (!text.trim()) {
+        alert('Nothing to copy.');
+        return;
+    }
+    try {
+        await navigator.clipboard.writeText(text);
+        alert('Copied to clipboard.');
+    } catch (error) {
+        output.focus();
+        output.select();
+        document.execCommand('copy');
+        alert('Copied to clipboard.');
+    }
+}
+
+folderPicker.addEventListener('change', () => {
+    const files = Array.from(folderPicker.files || []);
+    allFiles = files.filter(file => IMAGE_EXTENSIONS.has(getExtension(file.name)));
+    selectedFolders = new Set(allFiles.map(file => getFolder(getRelativePath(file))));
+    renderFolders();
+    generateEntries();
+});
+
+[githubUser, repo, branch].forEach(input => input.addEventListener('input', () => { saveSettings(); generateEntries(); }));
+[includeFolder, caseInsensitive].forEach(input => input.addEventListener('change', () => { saveSettings(); renderFolders(); generateEntries(); }));
+
+document.getElementById('selectAllFolders').addEventListener('click', () => {
+    selectedFolders = new Set(allFiles.map(file => getFolder(getRelativePath(file))));
+    renderFolders();
+    generateEntries();
+});
+
+document.getElementById('clearFolders').addEventListener('click', () => {
+    selectedFolders.clear();
+    renderFolders();
+    generateEntries();
+});
+
+document.getElementById('copyButton').addEventListener('click', () => copyText(output.value));
+document.getElementById('copyFilteredButton').addEventListener('click', () => copyText(output.value));
+document.getElementById('downloadButton').addEventListener('click', () => {
+    if (!output.value.trim()) { alert('Nothing to download.'); return; }
+    const blob = new Blob([output.value], { type: 'text/plain;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'better20-art-urls.txt';
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+});
+
+document.getElementById('clearButton').addEventListener('click', () => {
+    allFiles = [];
+    selectedFolders.clear();
+    folderPicker.value = '';
+    output.value = '';
+    fileCount.textContent = '0';
+    folderControls.classList.add('hidden');
+    previewContainer.textContent = 'No folder selected.';
+});
+
+loadSettings();
+</script>
+</body>
+</html>
